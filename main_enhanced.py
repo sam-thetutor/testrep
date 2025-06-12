@@ -1372,14 +1372,13 @@ class MagnusClientIntakeForm(QMainWindow):
         review_text += "\n"
 
         # Asset Breakdown
-        if self.form_data.get("include_breakdown"):
-            review_text += "ASSET BREAKDOWN:\n"
-            asset_types = ["Stocks", "Bonds", "Mutual Funds", "ETFs", "Options", "Futures", "Short-Term", "Other"]
-            for asset_type in asset_types:
-                field_name = f"asset_breakdown_{asset_type.lower().replace(' ', '_')}"
-                value = self.form_data.get(field_name)
-                review_text += format_field(asset_type, f"{value}%" if value else None)
-            review_text += "\n"
+        review_text += "ASSET BREAKDOWN:\n"
+        asset_types = ["Stocks", "Bonds", "Mutual Funds", "ETFs", "Options", "Futures", "Short-Term", "Other"]
+        for asset_type in asset_types:
+            field_name = f"asset_breakdown_{asset_type.lower().replace(' ', '_')}"
+            value = self.form_data.get(field_name)
+            review_text += format_field(asset_type, f"{value}%" if value else None)
+        review_text += "\n"
 
         # Investment Experience
         review_text += "INVESTMENT EXPERIENCE:\n"
@@ -1441,7 +1440,59 @@ class MagnusClientIntakeForm(QMainWindow):
                 elif isinstance(widget, QRadioButton):
                     if widget.isChecked():
                         self.form_data[object_name] = True
-                        
+
+        # Collect dependents data
+        dependents = []
+        for i in range(self.dependents_layout.count()):
+            frame = self.dependents_layout.itemAt(i).widget()
+            if isinstance(frame, QFrame):
+                dependent_data = {}
+                for child in frame.findChildren((QLineEdit, QDateEdit)):
+                    if isinstance(child, QLineEdit):
+                        if "name" in child.objectName():
+                            dependent_data["name"] = child.text()
+                        elif "relationship" in child.objectName():
+                            dependent_data["relationship"] = child.text()
+                    elif isinstance(child, QDateEdit):
+                        dependent_data["dob"] = child.date().toString("MM/dd/yyyy")
+                if dependent_data:
+                    dependents.append(dependent_data)
+        self.form_data["dependents"] = dependents
+
+        # Collect beneficiaries data
+        beneficiaries = []
+        for i in range(self.beneficiaries_layout.count()):
+            frame = self.beneficiaries_layout.itemAt(i).widget()
+            if isinstance(frame, QFrame):
+                beneficiary_data = {}
+                for child in frame.findChildren((QLineEdit, QDateEdit, QSpinBox)):
+                    if isinstance(child, QLineEdit):
+                        if "name" in child.objectName():
+                            beneficiary_data["name"] = child.text()
+                        elif "relationship" in child.objectName():
+                            beneficiary_data["relationship"] = child.text()
+                    elif isinstance(child, QDateEdit):
+                        beneficiary_data["dob"] = child.date().toString("MM/dd/yyyy")
+                    elif isinstance(child, QSpinBox):
+                        beneficiary_data["percentage"] = child.value()
+                if beneficiary_data:
+                    beneficiaries.append(beneficiary_data)
+        self.form_data["beneficiaries"] = beneficiaries
+
+        # Collect asset breakdown data
+        if hasattr(self, 'asset_breakdown_fields'):
+            for asset_type, spin_box in self.asset_breakdown_fields.items():
+                field_name = f"asset_breakdown_{asset_type.lower().replace(' ', '_')}"
+                self.form_data[field_name] = spin_box.value()
+
+        # Collect investment experience data
+        if hasattr(self, 'asset_experience_fields'):
+            for exp_type, fields in self.asset_experience_fields.items():
+                year_field = f"asset_experience_{exp_type.lower().replace(' ', '_')}_year"
+                level_field = f"asset_experience_{exp_type.lower().replace(' ', '_')}_level"
+                self.form_data[year_field] = fields["year"].text()
+                self.form_data[level_field] = fields["level"].currentText()
+        
     def auto_save_data(self):
         """Auto-save form data"""
         # Removed auto-save functionality to prevent JSON format saving
