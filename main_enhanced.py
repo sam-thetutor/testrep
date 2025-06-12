@@ -25,6 +25,10 @@ from PyQt6.QtGui import QFont, QPixmap, QIcon
 import docx
 import subprocess
 import platform
+from docx import Document
+from docx.shared import Pt
+from docx.enum.text import WD_ALIGN_PARAGRAPH
+from docx.shared import Inches
 
 # Import custom modules
 from validation import form_validator
@@ -479,26 +483,29 @@ class MagnusClientIntakeForm(QMainWindow):
         layout.addWidget(education_combo)
         
         # Tax Bracket
-        layout.addWidget(QLabel("Estimated Tax Bracket (%):"))
-        tax_bracket_spin = QSpinBox()
-        tax_bracket_spin.setObjectName("tax_bracket")
-        tax_bracket_spin.setRange(0, 100)
-        tax_bracket_spin.setSuffix("%")
-        tax_bracket_spin.setStyleSheet("""
-            QSpinBox {
+        layout.addWidget(QLabel("Estimated Tax Bracket:"))
+        tax_bracket_combo = QComboBox()
+        tax_bracket_combo.setObjectName("tax_bracket")
+        tax_bracket_combo.addItems([
+            "", "0-15%", "15%-32%", "32%+"
+        ])
+        tax_bracket_combo.setStyleSheet("""
+            QComboBox {
                 padding: 8px;
                 border: 2px solid #ddd;
                 border-radius: 4px;
                 font-size: 12px;
             }
         """)
-        layout.addWidget(tax_bracket_spin)
+        layout.addWidget(tax_bracket_combo)
         
         # Risk Tolerance
         layout.addWidget(QLabel("Investment Risk Tolerance:"))
         risk_combo = QComboBox()
         risk_combo.setObjectName("risk_tolerance")
-        risk_combo.addItems(["", "Conservative", "Moderate", "Aggressive"])
+        risk_combo.addItems([
+            "", "Conservative", "Moderate", "Moderately Aggressive", "Aggressive"
+        ])
         risk_combo.setStyleSheet("""
             QComboBox {
                 padding: 8px;
@@ -509,21 +516,85 @@ class MagnusClientIntakeForm(QMainWindow):
         """)
         layout.addWidget(risk_combo)
         
-        # Investment Objectives
-        layout.addWidget(QLabel("Primary Investment Objectives:"))
-        objectives_text = QTextEdit()
-        objectives_text.setObjectName("investment_objectives")
-        objectives_text.setMaximumHeight(80)
-        objectives_text.setPlaceholderText("e.g., Retirement, Wealth Growth, Education Savings")
-        objectives_text.setStyleSheet("""
-            QTextEdit {
-                padding: 8px;
-                border: 2px solid #ddd;
-                border-radius: 4px;
-                font-size: 12px;
+        # Investment Purpose (Updated with proper checkbox group)
+        layout.addWidget(QLabel("Investment Purpose:"))
+        purpose_group = QGroupBox()
+        purpose_group.setStyleSheet("""
+            QGroupBox {
+                border: 1px solid #bdc3c7;
+                border-radius: 5px;
+                margin-top: 10px;
+                padding: 10px;
+            }
+            QCheckBox {
+                spacing: 5px;
+            }
+            QCheckBox::indicator {
+                width: 15px;
+                height: 15px;
             }
         """)
-        layout.addWidget(objectives_text)
+        purpose_layout = QVBoxLayout(purpose_group)
+        
+        purpose_options = ["Income", "Growth and Income", "Capital Appreciation", "Speculation"]
+        self.purpose_checkboxes = {}
+        
+        for purpose in purpose_options:
+            checkbox = QCheckBox(purpose)
+            checkbox.setObjectName(f"investment_purpose_{purpose.lower().replace(' ', '_')}")
+            self.purpose_checkboxes[purpose] = checkbox
+            purpose_layout.addWidget(checkbox)
+        
+        layout.addWidget(purpose_group)
+        
+        # Investment Objectives Ranking (Updated with proper spinboxes)
+        layout.addWidget(QLabel("Investment Objectives (Rank 1-5, where 1 is highest priority):"))
+        objectives_group = QGroupBox()
+        objectives_group.setStyleSheet("""
+            QGroupBox {
+                border: 1px solid #bdc3c7;
+                border-radius: 5px;
+                margin-top: 10px;
+                padding: 10px;
+            }
+            QSpinBox {
+                padding: 5px;
+                border: 1px solid #bdc3c7;
+                border-radius: 3px;
+                min-width: 60px;
+            }
+        """)
+        objectives_layout = QVBoxLayout(objectives_group)
+        
+        objectives = [
+            "Trading Profits", "Speculation", "Capital Appreciation", 
+            "Income", "Preservation of Capital"
+        ]
+        self.objective_spinboxes = {}
+        
+        for objective in objectives:
+            h_layout = QHBoxLayout()
+            label = QLabel(objective)
+            label.setMinimumWidth(150)  # Ensure consistent label width
+            spinbox = QSpinBox()
+            spinbox.setObjectName(f"investment_objective_{objective.lower().replace(' ', '_')}")
+            spinbox.setRange(1, 5)
+            spinbox.setValue(3)  # Default to middle priority
+            spinbox.setStyleSheet("""
+                QSpinBox {
+                    padding: 5px;
+                    border: 1px solid #bdc3c7;
+                    border-radius: 3px;
+                }
+            """)
+            
+            self.objective_spinboxes[objective] = spinbox
+            h_layout.addWidget(label)
+            h_layout.addWidget(spinbox)
+            h_layout.addStretch()
+            objectives_layout.addLayout(h_layout)
+        
+        layout.addWidget(objectives_group)
         
         # Net Worth
         layout.addWidget(QLabel("Estimated Net Worth (excluding primary residence):"))
@@ -538,6 +609,13 @@ class MagnusClientIntakeForm(QMainWindow):
         liquid_net_worth_input.setObjectName("liquid_net_worth")
         liquid_net_worth_input.setPlaceholderText("Enter estimated liquid net worth in USD")
         layout.addWidget(liquid_net_worth_input)
+        
+        # Assets Held Away
+        layout.addWidget(QLabel("Assets Held Away (e.g., Brokerage Accounts, 401k, etc.):"))
+        assets_held_away_input = EnhancedLineEdit("assets_held_away")
+        assets_held_away_input.setObjectName("assets_held_away")
+        assets_held_away_input.setPlaceholderText("Enter total value of assets held away in USD")
+        layout.addWidget(assets_held_away_input)
         
         layout.addStretch()
         layout.addLayout(self.create_navigation_buttons(back_index=3, next_index=5))
@@ -907,32 +985,20 @@ class MagnusClientIntakeForm(QMainWindow):
         title.setStyleSheet("color: #2c3e50; margin-bottom: 15px;")
         layout.addWidget(title)
         
-        # Net Worth
-        layout.addWidget(QLabel("Estimated Net Worth (excluding primary residence):"))
-        net_worth_input = EnhancedLineEdit("net_worth")
-        net_worth_input.setObjectName("net_worth")
-        net_worth_input.setPlaceholderText("Enter estimated net worth in USD")
-        layout.addWidget(net_worth_input)
+        # Create a scroll area for the entire content
+        scroll_area = QScrollArea()
+        scroll_area.setWidgetResizable(True)
+        scroll_area.setFrameShape(QFrame.Shape.NoFrame)
         
-        # Liquid Net Worth
-        layout.addWidget(QLabel("Estimated Liquid Net Worth (cash + marketable securities):"))
-        liquid_net_worth_input = EnhancedLineEdit("liquid_net_worth")
-        liquid_net_worth_input.setObjectName("liquid_net_worth")
-        liquid_net_worth_input.setPlaceholderText("Enter estimated liquid net worth in USD")
-        layout.addWidget(liquid_net_worth_input)
-        
-        # Assets Held Away
-        layout.addWidget(QLabel("Assets Held Away (e.g., Brokerage Accounts, 401k, etc.):"))
-        assets_held_away_input = EnhancedLineEdit("assets_held_away")
-        assets_held_away_input.setObjectName("assets_held_away")
-        assets_held_away_input.setPlaceholderText("Enter total value of assets held away in USD")
-        layout.addWidget(assets_held_away_input)
+        # Create a widget to hold all the content
+        content_widget = QWidget()
+        content_layout = QVBoxLayout(content_widget)
         
         # Asset Breakdown (optional)
         include_breakdown_checkbox = QCheckBox("Include Asset Breakdown")
         include_breakdown_checkbox.setObjectName("include_breakdown")
         include_breakdown_checkbox.stateChanged.connect(self.on_include_breakdown_changed)
-        layout.addWidget(include_breakdown_checkbox)
+        content_layout.addWidget(include_breakdown_checkbox)
         
         self.asset_breakdown_group = QGroupBox("Asset Breakdown")
         self.asset_breakdown_group.setObjectName("asset_breakdown_group")
@@ -941,63 +1007,110 @@ class MagnusClientIntakeForm(QMainWindow):
         breakdown_layout = QVBoxLayout(self.asset_breakdown_group)
         self.asset_breakdown_fields = {}
         
-        asset_types = ["Stocks", "Bonds", "Mutual Funds", "ETFs", "Options", "Futures", "Short-Term", "Other"]
+        asset_types = [
+            "Stocks", "Bonds", "Mutual Funds", "ETFs", "UITs", 
+            "Annuities (Fixed)", "Annuities (Variable)", "Options", 
+            "Commodities", "Alternative Investments", "Limited Partnerships", 
+            "Variable Contracts", "Short-Term", "Other"
+        ]
+        
         for asset_type in asset_types:
             h_layout = QHBoxLayout()
             label = QLabel(f"{asset_type} (%):")
             spin_box = QSpinBox()
-            # spin_box.setObjectName(f"asset_breakdown_{asset_type.lower().replace(\' \', \'_\')}")
-            spin_box.setObjectName(f"asset_breakdown_{asset_type.lower().replace(' ', '_')}")
-
-            self.asset_breakdown_fields[asset_type] = spin_box
+            spin_box.setObjectName(f"asset_breakdown_{asset_type.lower().replace(' ', '_').replace('(', '').replace(')', '')}")
+            spin_box.setRange(0, 100)
+            spin_box.setSuffix("%")
             
+            self.asset_breakdown_fields[asset_type] = spin_box
             h_layout.addWidget(label)
             h_layout.addWidget(spin_box)
             breakdown_layout.addLayout(h_layout)
             
-        layout.addWidget(self.asset_breakdown_group)
+        content_layout.addWidget(self.asset_breakdown_group)
         
         # Investment Experience by Asset Type
-        layout.addWidget(QLabel("Investment Experience by Asset Type:"))
+        experience_label = QLabel("Investment Experience by Asset Type:")
+        experience_label.setStyleSheet("font-weight: bold; margin-top: 10px;")
+        content_layout.addWidget(experience_label)
         
-        self.asset_experience_layout = QVBoxLayout()
+        # Create a scroll area specifically for investment experience
+        experience_scroll = QScrollArea()
+        experience_scroll.setWidgetResizable(True)
+        experience_scroll.setFrameShape(QFrame.Shape.NoFrame)
+        experience_scroll.setMinimumHeight(300)  # Set minimum height for better visibility
+        
+        experience_widget = QWidget()
+        self.asset_experience_layout = QVBoxLayout(experience_widget)
         self.asset_experience_fields = {}
         
-        experience_types = ["Stocks", "Bonds", "Mutual Funds", "ETFs", "Options", "Futures"]
+        experience_types = [
+            "Stocks", "Bonds", "Mutual Funds", "UITs", 
+            "Annuities (Fixed)", "Annuities (Variable)", "Options", 
+            "Commodities", "Alternative Investments", "Limited Partnerships", 
+            "Variable Contracts"
+        ]
+        
         for exp_type in experience_types:
             group_box = QGroupBox(exp_type)
+            group_box.setStyleSheet("""
+                QGroupBox {
+                    font-weight: bold;
+                    border: 1px solid #bdc3c7;
+                    border-radius: 5px;
+                    margin-top: 10px;
+                    padding-top: 10px;
+                }
+                QGroupBox::title {
+                    subcontrol-origin: margin;
+                    left: 10px;
+                    padding: 0 5px 0 5px;
+                }
+            """)
             group_box_layout = QHBoxLayout(group_box)
             
             year_label = QLabel("Year Started:")
             year_input = QLineEdit()
-            # year_input.setObjectName(f"asset_experience_{exp_type.lower().replace(\' \', \'_\')}_year")
-            year_input.setObjectName(f"asset_experience_{exp_type.lower().replace(' ', '_')}_year")
-
+            year_input.setObjectName(f"asset_experience_{exp_type.lower().replace(' ', '_').replace('(', '').replace(')', '')}_year")
             year_input.setPlaceholderText("YYYY")
             year_input.setMaximumWidth(80)
+            year_input.setStyleSheet("""
+                QLineEdit {
+                    padding: 5px;
+                    border: 1px solid #bdc3c7;
+                    border-radius: 3px;
+                }
+            """)
             
             level_label = QLabel("Level:")
             level_combo = QComboBox()
-            # level_combo.setObjectName(f"asset_experience_{exp_type.lower().replace(\' \', \'_\')}_level")
-            level_combo.setObjectName(f"asset_experience_{exp_type.lower().replace(' ', '_')}_level")
-
+            level_combo.setObjectName(f"asset_experience_{exp_type.lower().replace(' ', '_').replace('(', '').replace(')', '')}_level")
             level_combo.addItems(["", "None", "Limited", "Good", "Extensive"])
+            level_combo.setStyleSheet("""
+                QComboBox {
+                    padding: 5px;
+                    border: 1px solid #bdc3c7;
+                    border-radius: 3px;
+                }
+            """)
             
             group_box_layout.addWidget(year_label)
             group_box_layout.addWidget(year_input)
             group_box_layout.addWidget(level_label)
             group_box_layout.addWidget(level_combo)
+            group_box_layout.addStretch()
             
             self.asset_experience_fields[exp_type] = {"year": year_input, "level": level_combo}
             self.asset_experience_layout.addWidget(group_box)
-            
-        layout.addLayout(self.asset_experience_layout)
+        
+        experience_scroll.setWidget(experience_widget)
+        content_layout.addWidget(experience_scroll)
         
         # Outside Broker Firm
         has_outside_broker_checkbox = QCheckBox("Do you have assets with an outside broker firm?")
         has_outside_broker_checkbox.setObjectName("has_outside_broker")
         has_outside_broker_checkbox.stateChanged.connect(self.on_has_outside_broker_changed)
-        layout.addWidget(has_outside_broker_checkbox)
+        content_layout.addWidget(has_outside_broker_checkbox)
         
         self.outside_broker_group = QGroupBox("Outside Broker Firm Information")
         self.outside_broker_group.setObjectName("outside_broker_group")
@@ -1010,15 +1123,33 @@ class MagnusClientIntakeForm(QMainWindow):
         outside_firm_name_input.setObjectName("outside_firm_name")
         outside_broker_layout.addWidget(outside_firm_name_input)
         
+        outside_broker_layout.addWidget(QLabel("Account Type:"))
+        outside_account_type_input = QComboBox()
+        outside_account_type_input.setObjectName("outside_broker_account_type")
+        outside_account_type_input.addItems([
+            "", "Individual", "Joint", "IRA", "Roth IRA", 
+            "401(k)", "Trust", "Other"
+        ])
+        outside_broker_layout.addWidget(outside_account_type_input)
+        
+        outside_broker_layout.addWidget(QLabel("Account Number:"))
+        outside_account_number_input = EnhancedLineEdit("outside_broker_account_number")
+        outside_account_number_input.setObjectName("outside_broker_account_number")
+        outside_broker_layout.addWidget(outside_account_number_input)
+        
         outside_broker_layout.addWidget(QLabel("Liquid Amount with this Firm:"))
         outside_liquid_amount_input = EnhancedLineEdit("outside_liquid_amount")
         outside_liquid_amount_input.setObjectName("outside_liquid_amount")
         outside_liquid_amount_input.setPlaceholderText("Enter liquid amount in USD")
         outside_broker_layout.addWidget(outside_liquid_amount_input)
         
-        layout.addWidget(self.outside_broker_group)
+        content_layout.addWidget(self.outside_broker_group)
         
-        layout.addStretch()
+        # Add the content widget to the scroll area
+        scroll_area.setWidget(content_widget)
+        layout.addWidget(scroll_area)
+        
+        # Navigation buttons
         layout.addLayout(self.create_navigation_buttons(back_index=7, next_index=9))
         
         self.stacked_widget.addWidget(widget)
@@ -1326,7 +1457,8 @@ class MagnusClientIntakeForm(QMainWindow):
         review_text += format_field("Education Status", self.form_data.get("education_status"))
         review_text += format_field("Estimated Tax Bracket", self.form_data.get("tax_bracket"))
         review_text += format_field("Investment Risk Tolerance", self.form_data.get("risk_tolerance"))
-        review_text += format_field("Investment Objectives", self.form_data.get("investment_objectives"))
+        review_text += format_field("Investment Purpose", self.form_data.get("investment_purpose"))
+        review_text += format_field("Investment Objectives", self.form_data.get("investment_objective"))
         review_text += format_field("Net Worth (excluding primary home)", self.form_data.get("net_worth"))
         review_text += format_field("Liquid Net Worth", self.form_data.get("liquid_net_worth"))
         review_text += format_field("Assets Held Away", self.form_data.get("assets_held_away"))
@@ -1399,7 +1531,7 @@ class MagnusClientIntakeForm(QMainWindow):
         if self.form_data.get("has_outside_broker"):
             review_text += "OUTSIDE BROKER INFORMATION:\n"
             review_text += format_field("Broker Firm Name", self.form_data.get("outside_firm_name"))
-            review_text += format_field("Account Number", self.form_data.get("outside_liquid_amount"))
+            review_text += format_field("Account Number", self.form_data.get("outside_broker_account_number"))
             review_text += format_field("Account Type", self.form_data.get("outside_broker_account_type"))
             review_text += "\n"
 
@@ -1545,58 +1677,225 @@ class MagnusClientIntakeForm(QMainWindow):
         
         if file_path:
             try:
-                doc = docx.Document()
-                doc.add_heading('Magnus Client Intake Form Draft', 0)
+                doc = Document()
                 
-                for key, value in self.form_data.items():
-                    doc.add_paragraph(f"{key}: {value}")
+                # Title
+                title = doc.add_heading('Magnus Client Intake Form', 0)
+                title.alignment = WD_ALIGN_PARAGRAPH.CENTER
                 
+                # Helper function to format monetary values
+                def format_money(value):
+                    if value:
+                        try:
+                            return f"${int(value):,}"
+                        except ValueError:
+                            return value
+                    return "[Not provided]"
+                
+                # Personal Information
+                doc.add_heading('Personal Information', level=1)
+                doc.add_paragraph(f"Full Name: {self.form_data.get('full_name', '[Not provided]')}")
+                doc.add_paragraph(f"Date of Birth: {self.form_data.get('dob', '[Not provided]')}")
+                doc.add_paragraph(f"Social Security Number: {self.form_data.get('ssn', '[Not provided]')}")
+                doc.add_paragraph(f"Citizenship: {self.form_data.get('citizenship', '[Not provided]')}")
+                doc.add_paragraph(f"Marital Status: {self.form_data.get('marital_status', '[Not provided]')}")
+                doc.add_paragraph()
+                
+                # Contact Information
+                doc.add_heading('Contact Information', level=1)
+                doc.add_paragraph(f"Residential Address: {self.form_data.get('residential_address', '[Not provided]')}")
+                doc.add_paragraph(f"Email: {self.form_data.get('email', '[Not provided]')}")
+                doc.add_paragraph(f"Home Phone: {self.form_data.get('home_phone', '[Not provided]')}")
+                doc.add_paragraph(f"Mobile Phone: {self.form_data.get('mobile_phone', '[Not provided]')}")
+                doc.add_paragraph(f"Work Phone: {self.form_data.get('work_phone', '[Not provided]')}")
+                doc.add_paragraph()
+                
+                # Employment Information
+                doc.add_heading('Employment Information', level=1)
+                doc.add_paragraph(f"Employment Status: {self.form_data.get('employment_status', '[Not provided]')}")
+                doc.add_paragraph(f"Employer Name: {self.form_data.get('employer_name', '[Not provided]')}")
+                doc.add_paragraph(f"Occupation: {self.form_data.get('occupation', '[Not provided]')}")
+                doc.add_paragraph(f"Years Employed: {self.form_data.get('years_employed', '[Not provided]')}")
+                doc.add_paragraph(f"Annual Income: {format_money(self.form_data.get('annual_income'))}")
+                
+                # Retirement Information (if applicable)
+                if self.form_data.get('employment_status') == 'Retired':
+                    doc.add_heading('Retirement Information', level=1)
+                    doc.add_paragraph(f"Former Employer: {self.form_data.get('former_employer', '[Not provided]')}")
+                    doc.add_paragraph(f"Source of Income: {self.form_data.get('income_source', '[Not provided]')}")
+                doc.add_paragraph()
+                
+                # Financial Information
+                doc.add_heading('Financial Information', level=1)
+                doc.add_paragraph(f"Education Status: {self.form_data.get('education_status', '[Not provided]')}")
+                doc.add_paragraph(f"Estimated Tax Bracket: {self.form_data.get('tax_bracket', '[Not provided]')}")
+                doc.add_paragraph(f"Investment Risk Tolerance: {self.form_data.get('risk_tolerance', '[Not provided]')}")
+                
+                # Investment Purpose
+                doc.add_paragraph("Investment Purpose:")
+                purpose_list = []
+                for purpose in ["Income", "Growth and Income", "Capital Appreciation", "Speculation"]:
+                    if self.form_data.get(f"investment_purpose_{purpose.lower().replace(' ', '_')}"):
+                        purpose_list.append(purpose)
+                doc.add_paragraph(", ".join(purpose_list) if purpose_list else "[Not provided]")
+                
+                # Investment Objectives
+                doc.add_paragraph("Investment Objectives (Ranked 1-5):")
+                objectives = [
+                    "Trading Profits", "Speculation", "Capital Appreciation", 
+                    "Income", "Preservation of Capital"
+                ]
+                for objective in objectives:
+                    rank = self.form_data.get(f"investment_objective_{objective.lower().replace(' ', '_')}")
+                    if rank:
+                        doc.add_paragraph(f"  {objective}: {rank}")
+                
+                doc.add_paragraph(f"Net Worth: {format_money(self.form_data.get('net_worth'))}")
+                doc.add_paragraph(f"Liquid Net Worth: {format_money(self.form_data.get('liquid_net_worth'))}")
+                doc.add_paragraph(f"Assets Held Away: {format_money(self.form_data.get('assets_held_away'))}")
+                doc.add_paragraph()
+                
+                # Spouse Information
+                if self.form_data.get('spouse_applicable'):
+                    doc.add_heading('Spouse Information', level=1)
+                    doc.add_paragraph(f"Full Name: {self.form_data.get('spouse_full_name', '[Not provided]')}")
+                    doc.add_paragraph(f"Date of Birth: {self.form_data.get('spouse_dob', '[Not provided]')}")
+                    doc.add_paragraph(f"Social Security Number: {self.form_data.get('spouse_ssn', '[Not provided]')}")
+                    doc.add_paragraph(f"Employment Status: {self.form_data.get('spouse_employment_status', '[Not provided]')}")
+                    doc.add_paragraph(f"Employer Name: {self.form_data.get('spouse_employer_name', '[Not provided]')}")
+                    doc.add_paragraph(f"Occupation: {self.form_data.get('spouse_occupation', '[Not provided]')}")
+                    doc.add_paragraph()
+                
+                # Dependents
+                doc.add_heading('Dependents', level=1)
+                dependents = self.form_data.get('dependents', [])
+                if dependents:
+                    for i, dep in enumerate(dependents, 1):
+                        doc.add_paragraph(f"Dependent {i}:")
+                        doc.add_paragraph(f"  Name: {dep.get('name', '[Not provided]')}")
+                        doc.add_paragraph(f"  Date of Birth: {dep.get('dob', '[Not provided]')}")
+                        doc.add_paragraph(f"  Relationship: {dep.get('relationship', '[Not provided]')}")
+                else:
+                    doc.add_paragraph("[No dependents specified]")
+                doc.add_paragraph()
+                
+                # Beneficiaries
+                doc.add_heading('Beneficiaries', level=1)
+                beneficiaries = self.form_data.get('beneficiaries', [])
+                if beneficiaries:
+                    for i, ben in enumerate(beneficiaries, 1):
+                        doc.add_paragraph(f"Beneficiary {i}:")
+                        doc.add_paragraph(f"  Name: {ben.get('name', '[Not provided]')}")
+                        doc.add_paragraph(f"  Date of Birth: {ben.get('dob', '[Not provided]')}")
+                        doc.add_paragraph(f"  Relationship: {ben.get('relationship', '[Not provided]')}")
+                        percentage = ben.get('percentage', '')
+                        doc.add_paragraph(f"  Percentage: {f'{percentage}%' if percentage else '[Not provided]'}")
+                else:
+                    doc.add_paragraph("[No beneficiaries specified]")
+                doc.add_paragraph()
+                
+                # Asset Breakdown
+                doc.add_heading('Asset Breakdown', level=1)
+                asset_types = [
+                    "Stocks", "Bonds", "Mutual Funds", "ETFs", "UITs", 
+                    "Annuities (Fixed)", "Annuities (Variable)", "Options", 
+                    "Commodities", "Alternative Investments", "Limited Partnerships", 
+                    "Variable Contracts", "Short-Term", "Other"
+                ]
+                for asset_type in asset_types:
+                    field_name = f"asset_breakdown_{asset_type.lower().replace(' ', '_').replace('(', '').replace(')', '')}"
+                    value = self.form_data.get(field_name)
+                    doc.add_paragraph(f"{asset_type}: {f'{value}%' if value else '[Not provided]'}")
+                doc.add_paragraph()
+                
+                # Investment Experience
+                doc.add_heading('Investment Experience', level=1)
+                experience_types = [
+                    "Stocks", "Bonds", "Mutual Funds", "UITs", 
+                    "Annuities (Fixed)", "Annuities (Variable)", "Options", 
+                    "Commodities", "Alternative Investments", "Limited Partnerships", 
+                    "Variable Contracts"
+                ]
+                for exp_type in experience_types:
+                    doc.add_paragraph(f"{exp_type}:")
+                    year_field = f"asset_experience_{exp_type.lower().replace(' ', '_').replace('(', '').replace(')', '')}_year"
+                    level_field = f"asset_experience_{exp_type.lower().replace(' ', '_').replace('(', '').replace(')', '')}_level"
+                    year = self.form_data.get(year_field)
+                    level = self.form_data.get(level_field)
+                    doc.add_paragraph(f"  Year Started: {year or '[Not provided]'}")
+                    doc.add_paragraph(f"  Experience Level: {level or '[Not provided]'}")
+                doc.add_paragraph()
+                
+                # Outside Broker Information
+                if self.form_data.get('has_outside_broker'):
+                    doc.add_heading('Outside Broker Information', level=1)
+                    doc.add_paragraph(f"Broker Firm Name: {self.form_data.get('outside_firm_name', '[Not provided]')}")
+                    doc.add_paragraph(f"Account Type: {self.form_data.get('outside_broker_account_type', '[Not provided]')}")
+                    doc.add_paragraph(f"Account Number: {self.form_data.get('outside_broker_account_number', '[Not provided]')}")
+                    doc.add_paragraph(f"Liquid Amount: {format_money(self.form_data.get('outside_liquid_amount'))}")
+                    doc.add_paragraph()
+                
+                # Trusted Contact Information
+                doc.add_heading('Trusted Contact Information', level=1)
+                doc.add_paragraph(f"Full Name: {self.form_data.get('trusted_full_name', '[Not provided]')}")
+                doc.add_paragraph(f"Relationship: {self.form_data.get('trusted_relationship', '[Not provided]')}")
+                doc.add_paragraph(f"Phone Number: {self.form_data.get('trusted_phone', '[Not provided]')}")
+                doc.add_paragraph(f"Email Address: {self.form_data.get('trusted_email', '[Not provided]')}")
+                doc.add_paragraph()
+                
+                # Regulatory Consent
+                doc.add_heading('Regulatory Consent', level=1)
+                electronic_consent = "Yes" if self.form_data.get('electronic_regulatory_yes') else "No"
+                doc.add_paragraph(f"Electronic Delivery Consent: {electronic_consent}")
+                
+                # Save the document
                 doc.save(file_path)
                 QMessageBox.information(self, "Success", "Draft saved successfully in Word format!")
             except Exception as e:
                 QMessageBox.critical(self, "Error", f"Failed to save draft: {e}")
                 
     def generate_pdf_report(self):
-        """Generate PDF report from form data without validation"""
+        """Generate a PDF report from the form data"""
         try:
-            self.collect_form_data()
-
-            # Get save location
-            file_path, _ = QFileDialog.getSaveFileName(
-                self, "Save PDF Report", "Magnus_Client_Intake_Form.pdf", "PDF Files (*.pdf)"
-            )
-
-            if not file_path:  # User cancelled the save dialog
-                return
-
-            try:
-                # Generate the PDF
-                success = generate_pdf_from_data(self.form_data, file_path)
-                
-                if success:
-                    QMessageBox.information(self, "Success", f"PDF report generated successfully!\n\nSaved to: {file_path}")
-                    # Try to open the PDF
-                    try:
-                        if platform.system() == 'Windows':
-                            os.startfile(file_path)
-                        elif platform.system() == 'Darwin':
-                            subprocess.call(['open', file_path])
-                        else:
-                            subprocess.call(['xdg-open', file_path])
-                    except Exception as e:
-                        QMessageBox.warning(self, "Warning", 
-                            f"PDF was generated but could not be opened automatically.\n\nYou can find it at: {file_path}")
-                else:
-                    QMessageBox.critical(self, "Error", "Failed to generate PDF report. Please try again.")
-
-            except Exception as e:
-                error_details = traceback.format_exc()
-                QMessageBox.critical(self, "PDF Error", 
-                    f"An error occurred while generating the PDF:\n\n{str(e)}\n\nPlease try again or contact support if the problem persists.")
+            # Get the output directory
+            output_dir = os.path.join(os.path.expanduser("~"), "Downloads")
+            if not os.path.exists(output_dir):
+                os.makedirs(output_dir)
             
+            # Get the file path
+            file_path = os.path.join(output_dir, "Magnus_Client_Intake_Form.pdf")
+            
+            # Generate the PDF
+            from pdf_generator_reportlab import generate_pdf_report
+            if generate_pdf_report(self.form_data, file_path):
+                QMessageBox.information(
+                    self,
+                    "Success",
+                    f"PDF has been generated successfully and saved to:\n{file_path}"
+                )
+                # Try to open the PDF
+                try:
+                    import subprocess
+                    if os.name == 'nt':  # Windows
+                        os.startfile(file_path)
+                    elif os.name == 'posix':  # macOS or Linux
+                        subprocess.run(['open' if sys.platform == 'darwin' else 'xdg-open', file_path])
+                except Exception as e:
+                    print(f"Error opening PDF: {str(e)}")
+            else:
+                QMessageBox.critical(
+                    self,
+                    "Error",
+                    "Failed to generate PDF. Please check the console for details."
+                )
         except Exception as e:
-            QMessageBox.critical(self, "Error", 
-                f"An unexpected error occurred:\n\n{str(e)}\n\nPlease try again or contact support if the problem persists.")
+            QMessageBox.critical(
+                self,
+                "Error",
+                f"An error occurred while generating the PDF:\n{str(e)}"
+            )
+            print(f"Error generating PDF: {str(e)}")
+            traceback.print_exc()
 
 
 
