@@ -456,13 +456,22 @@ class MagnusClientIntakeForm(QMainWindow):
     def create_financial_info_page(self):
         """Create the financial information page"""
         widget = QWidget()
-        layout = QVBoxLayout(widget)
+        main_layout = QVBoxLayout(widget)
         
         # Page title
         title = QLabel("Financial Information")
         title.setFont(QFont("Arial", 14, QFont.Weight.Bold))
         title.setStyleSheet("color: #2c3e50; margin-bottom: 15px;")
-        layout.addWidget(title)
+        main_layout.addWidget(title)
+        
+        # Create scroll area
+        scroll_area = QScrollArea()
+        scroll_area.setWidgetResizable(True)
+        scroll_area.setFrameShape(QFrame.Shape.NoFrame)
+        
+        # Create content widget
+        content_widget = QWidget()
+        layout = QVBoxLayout(content_widget)
         
         # Education Status
         layout.addWidget(QLabel("Education Status:"))
@@ -516,22 +525,34 @@ class MagnusClientIntakeForm(QMainWindow):
         """)
         layout.addWidget(risk_combo)
         
-        # Investment Purpose (Updated with proper checkbox group)
-        layout.addWidget(QLabel("Investment Purpose:"))
+        # Investment Purpose
+        purpose_label = QLabel("Investment Purpose:")
+        purpose_label.setStyleSheet("font-weight: bold; margin-top: 10px;")
+        layout.addWidget(purpose_label)
+        
         purpose_group = QGroupBox()
         purpose_group.setStyleSheet("""
             QGroupBox {
-                border: 1px solid #bdc3c7;
+                border: 2px solid #bdc3c7;
                 border-radius: 5px;
-                margin-top: 10px;
+                margin-top: 5px;
                 padding: 10px;
+                background-color: #f8f9fa;
             }
             QCheckBox {
-                spacing: 5px;
+                spacing: 8px;
+                font-size: 12px;
+                padding: 5px;
             }
             QCheckBox::indicator {
-                width: 15px;
-                height: 15px;
+                width: 20px;
+                height: 20px;
+                border: 2px solid #bdc3c7;
+                border-radius: 3px;
+            }
+            QCheckBox::indicator:checked {
+                background-color: #28a745;
+                border-color: #28a745;
             }
         """)
         purpose_layout = QVBoxLayout(purpose_group)
@@ -547,21 +568,30 @@ class MagnusClientIntakeForm(QMainWindow):
         
         layout.addWidget(purpose_group)
         
-        # Investment Objectives Ranking (Updated with proper spinboxes)
-        layout.addWidget(QLabel("Investment Objectives (Rank 1-5, where 1 is highest priority):"))
+        # Investment Objectives Ranking
+        objectives_label = QLabel("Investment Objectives (Rank 1-5, where 1 is highest priority):")
+        objectives_label.setStyleSheet("font-weight: bold; margin-top: 15px;")
+        layout.addWidget(objectives_label)
+        
         objectives_group = QGroupBox()
         objectives_group.setStyleSheet("""
             QGroupBox {
-                border: 1px solid #bdc3c7;
+                border: 2px solid #bdc3c7;
                 border-radius: 5px;
-                margin-top: 10px;
+                margin-top: 5px;
                 padding: 10px;
+                background-color: #f8f9fa;
             }
             QSpinBox {
+                padding: 8px;
+                border: 2px solid #bdc3c7;
+                border-radius: 4px;
+                min-width: 80px;
+                font-size: 12px;
+            }
+            QLabel {
+                font-size: 12px;
                 padding: 5px;
-                border: 1px solid #bdc3c7;
-                border-radius: 3px;
-                min-width: 60px;
             }
         """)
         objectives_layout = QVBoxLayout(objectives_group)
@@ -575,16 +605,16 @@ class MagnusClientIntakeForm(QMainWindow):
         for objective in objectives:
             h_layout = QHBoxLayout()
             label = QLabel(objective)
-            label.setMinimumWidth(150)  # Ensure consistent label width
+            label.setMinimumWidth(200)  # Ensure consistent label width
             spinbox = QSpinBox()
             spinbox.setObjectName(f"investment_objective_{objective.lower().replace(' ', '_')}")
             spinbox.setRange(1, 5)
             spinbox.setValue(3)  # Default to middle priority
             spinbox.setStyleSheet("""
                 QSpinBox {
-                    padding: 5px;
-                    border: 1px solid #bdc3c7;
-                    border-radius: 3px;
+                    padding: 8px;
+                    border: 2px solid #bdc3c7;
+                    border-radius: 4px;
                 }
             """)
             
@@ -617,8 +647,12 @@ class MagnusClientIntakeForm(QMainWindow):
         assets_held_away_input.setPlaceholderText("Enter total value of assets held away in USD")
         layout.addWidget(assets_held_away_input)
         
-        layout.addStretch()
-        layout.addLayout(self.create_navigation_buttons(back_index=3, next_index=5))
+        # Add the content widget to the scroll area
+        scroll_area.setWidget(content_widget)
+        main_layout.addWidget(scroll_area)
+        
+        # Navigation buttons
+        main_layout.addLayout(self.create_navigation_buttons(back_index=3, next_index=5))
         
         self.stacked_widget.addWidget(widget)
         
@@ -1573,6 +1607,21 @@ class MagnusClientIntakeForm(QMainWindow):
                     if widget.isChecked():
                         self.form_data[object_name] = True
 
+        # Collect investment purpose data
+        investment_purposes = []
+        for purpose, checkbox in self.purpose_checkboxes.items():
+            if checkbox.isChecked():
+                investment_purposes.append(purpose)
+        self.form_data["investment_purpose"] = ", ".join(investment_purposes) if investment_purposes else None
+
+        # Collect investment objectives data
+        investment_objectives = []
+        for objective, spinbox in self.objective_spinboxes.items():
+            rank = spinbox.value()
+            if rank > 0:  # Only include if a rank is selected
+                investment_objectives.append(f"{objective}: {rank}")
+        self.form_data["investment_objective"] = "\n".join(investment_objectives) if investment_objectives else None
+
         # Collect dependents data
         dependents = []
         for i in range(self.dependents_layout.count()):
@@ -1857,17 +1906,22 @@ class MagnusClientIntakeForm(QMainWindow):
     def generate_pdf_report(self):
         """Generate a PDF report from the form data"""
         try:
-            # Get the output directory
-            output_dir = os.path.join(os.path.expanduser("~"), "Downloads")
-            if not os.path.exists(output_dir):
-                os.makedirs(output_dir)
+            # First collect all form data
+            self.collect_form_data()
+
+            # Get the save location from user
+            file_path, _ = QFileDialog.getSaveFileName(
+                self, "Save PDF Report", "magnus_form_report.pdf", "PDF Files (*.pdf)"
+            )
             
-            # Get the file path
-            file_path = os.path.join(output_dir, "Magnus_Client_Intake_Form.pdf")
+            if not file_path:  # User cancelled the save dialog
+                return
             
             # Generate the PDF
             from pdf_generator_reportlab import generate_pdf_report
-            if generate_pdf_report(self.form_data, file_path):
+            success = generate_pdf_report(self.form_data, file_path)
+            
+            if success:
                 QMessageBox.information(
                     self,
                     "Success",
@@ -1875,27 +1929,30 @@ class MagnusClientIntakeForm(QMainWindow):
                 )
                 # Try to open the PDF
                 try:
-                    import subprocess
                     if os.name == 'nt':  # Windows
                         os.startfile(file_path)
                     elif os.name == 'posix':  # macOS or Linux
                         subprocess.run(['open' if sys.platform == 'darwin' else 'xdg-open', file_path])
                 except Exception as e:
-                    print(f"Error opening PDF: {str(e)}")
+                    QMessageBox.warning(
+                        self,
+                        "Warning",
+                        f"PDF was generated but could not be opened automatically:\n{str(e)}"
+                    )
             else:
                 QMessageBox.critical(
                     self,
                     "Error",
-                    "Failed to generate PDF. Please check the console for details."
+                    "Failed to generate PDF. Please try again."
                 )
         except Exception as e:
+            error_msg = f"An error occurred while generating the PDF:\n{str(e)}\n\nTraceback:\n{traceback.format_exc()}"
+            print(error_msg)  # Print to console for debugging
             QMessageBox.critical(
                 self,
-                "Error",
-                f"An error occurred while generating the PDF:\n{str(e)}"
+                "Error Generating PDF",
+                error_msg
             )
-            print(f"Error generating PDF: {str(e)}")
-            traceback.print_exc()
 
 
 
