@@ -1055,7 +1055,7 @@ class MagnusClientIntakeForm(QMainWindow):
             spin_box.setObjectName(f"asset_breakdown_{asset_type.lower().replace(' ', '_').replace('(', '').replace(')', '')}")
             spin_box.setRange(0, 100)
             spin_box.setSuffix("%")
-            
+
             self.asset_breakdown_fields[asset_type] = spin_box
             h_layout.addWidget(label)
             h_layout.addWidget(spin_box)
@@ -1136,7 +1136,7 @@ class MagnusClientIntakeForm(QMainWindow):
             
             self.asset_experience_fields[exp_type] = {"year": year_input, "level": level_combo}
             self.asset_experience_layout.addWidget(group_box)
-        
+            
         experience_scroll.setWidget(experience_widget)
         content_layout.addWidget(experience_scroll)
         
@@ -1499,7 +1499,7 @@ class MagnusClientIntakeForm(QMainWindow):
         review_text += "\n"
 
         # Spouse Information
-        if self.form_data.get("spouse_applicable"):
+        if not self.form_data.get("spouse_applicable"):
             review_text += "SPOUSE INFORMATION:\n"
             review_text += format_field("Spouse Full Name", self.form_data.get("spouse_full_name"))
             review_text += format_field("Spouse Date of Birth", self.form_data.get("spouse_dob"))
@@ -1508,6 +1508,8 @@ class MagnusClientIntakeForm(QMainWindow):
             review_text += format_field("Spouse Employer Name", self.form_data.get("spouse_employer_name"))
             review_text += format_field("Spouse Occupation/Title", self.form_data.get("spouse_occupation"))
             review_text += "\n"
+        else:
+            review_text += "SPOUSE INFORMATION:\n  [Not applicable]\n\n"
 
         # Dependents
         review_text += "DEPENDENTS:\n"
@@ -1582,7 +1584,7 @@ class MagnusClientIntakeForm(QMainWindow):
         electronic_consent = "Yes" if self.form_data.get("electronic_regulatory_yes") else "No"
         review_text += format_field("Electronic Delivery Consent", electronic_consent)
         review_text += "\n"
-
+        
         self.review_area.setPlainText(review_text)
         
     def collect_form_data(self):
@@ -1673,7 +1675,7 @@ class MagnusClientIntakeForm(QMainWindow):
                 level_field = f"asset_experience_{exp_type.lower().replace(' ', '_')}_level"
                 self.form_data[year_field] = fields["year"].text()
                 self.form_data[level_field] = fields["level"].currentText()
-        
+                        
     def auto_save_data(self):
         """Auto-save form data"""
         # Removed auto-save functionality to prevent JSON format saving
@@ -1914,7 +1916,7 @@ class MagnusClientIntakeForm(QMainWindow):
                 self, "Save PDF Report", "magnus_form_report.pdf", "PDF Files (*.pdf)"
             )
             
-            if not file_path:  # User cancelled the save dialog
+            if not file_path:  # User cancelled
                 return
             
             # Generate the PDF

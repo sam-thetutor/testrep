@@ -91,7 +91,7 @@ def save_draft_word(form_data, output_path):
         doc.add_paragraph()
         
         # Spouse Information (if applicable)
-        if form_data.get("spouse_applicable", False):
+        if not form_data.get("spouse_applicable", False):
             doc.add_heading('Spouse/Partner Information', level=1)
             doc.add_paragraph(f"Spouse Full Name: {form_data.get('spouse_full_name', '[Not provided]')}")
             doc.add_paragraph(f"Spouse Date of Birth: {form_data.get('spouse_dob', '[Not provided]')}")
@@ -99,6 +99,10 @@ def save_draft_word(form_data, output_path):
             doc.add_paragraph(f"Spouse Employment Status: {form_data.get('spouse_employment_status', '[Not provided]')}")
             doc.add_paragraph(f"Spouse Employer Name: {form_data.get('spouse_employer_name', '[Not provided]')}")
             doc.add_paragraph(f"Spouse Occupation/Title: {form_data.get('spouse_occupation', '[Not provided]')}")
+            doc.add_paragraph()
+        else:
+            doc.add_heading('Spouse/Partner Information', level=1)
+            doc.add_paragraph("[Not applicable]")
             doc.add_paragraph()
         
         # Dependents Information
@@ -189,7 +193,7 @@ def generate_pdf_report(form_data, output_path):
         # Validate input data
         if not isinstance(form_data, dict):
             raise ValueError("Form data must be a dictionary")
-
+        
         # Create the PDF document
         doc = SimpleDocTemplate(
             output_path,
@@ -199,7 +203,7 @@ def generate_pdf_report(form_data, output_path):
             topMargin=72,
             bottomMargin=72
         )
-
+        
         # Define styles
         styles = getSampleStyleSheet()
         title_style = ParagraphStyle(
@@ -233,11 +237,11 @@ def generate_pdf_report(form_data, output_path):
 
         # Start building the content
         content = []
-
+        
         # Title
         content.append(Paragraph("Magnus Client Intake Form", title_style))
         content.append(Spacer(1, 12))
-
+        
         # Personal Information
         content.append(Paragraph("Personal Information", heading_style))
         content.append(Paragraph(f"Full Name: {form_data.get('full_name', '[Not provided]')}", normal_style))
@@ -246,7 +250,7 @@ def generate_pdf_report(form_data, output_path):
         content.append(Paragraph(f"Citizenship: {form_data.get('citizenship', '[Not provided]')}", normal_style))
         content.append(Paragraph(f"Marital Status: {form_data.get('marital_status', '[Not provided]')}", normal_style))
         content.append(Spacer(1, 12))
-
+        
         # Contact Information
         content.append(Paragraph("Contact Information", heading_style))
         content.append(Paragraph(f"Residential Address: {form_data.get('residential_address', '[Not provided]')}", normal_style))
@@ -255,7 +259,7 @@ def generate_pdf_report(form_data, output_path):
         content.append(Paragraph(f"Mobile Phone: {form_data.get('mobile_phone', '[Not provided]')}", normal_style))
         content.append(Paragraph(f"Work Phone: {form_data.get('work_phone', '[Not provided]')}", normal_style))
         content.append(Spacer(1, 12))
-
+        
         # Employment Information
         content.append(Paragraph("Employment Information", heading_style))
         content.append(Paragraph(f"Employment Status: {form_data.get('employment_status', '[Not provided]')}", normal_style))
@@ -295,7 +299,7 @@ def generate_pdf_report(form_data, output_path):
         content.append(Spacer(1, 12))
 
         # Spouse Information
-        if form_data.get('spouse_applicable'):
+        if not form_data.get('spouse_applicable'):
             content.append(Paragraph("Spouse Information", heading_style))
             content.append(Paragraph(f"Full Name: {form_data.get('spouse_full_name', '[Not provided]')}", normal_style))
             content.append(Paragraph(f"Date of Birth: {form_data.get('spouse_dob', '[Not provided]')}", normal_style))
@@ -404,7 +408,7 @@ def generate_pdf_report(form_data, output_path):
         # Build the PDF with page numbers
         doc.build(content, onFirstPage=add_page_number, onLaterPages=add_page_number)
         return True
-        
+    
     except Exception as e:
         print(f"Error generating PDF: {str(e)}")
         traceback.print_exc()
