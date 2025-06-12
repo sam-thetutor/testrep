@@ -1,11 +1,19 @@
 # -*- mode: python ; coding: utf-8 -*-
 
+from PyInstaller.utils.hooks import collect_data_files
+
+# Explicitly include required .py files
+extra_datas = [
+    ('pdf_generator_reportlab.py', '.'),
+    ('validation.py', '.'),
+    ('security.py', '.')
+]
 
 a = Analysis(
     ['main_enhanced.py'],
-    pathex=[],
+    pathex=['.'],
     binaries=[],
-    datas=[],
+    datas=extra_datas,
     hiddenimports=[],
     hookspath=[],
     hooksconfig={},

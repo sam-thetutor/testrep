@@ -15,13 +15,16 @@ from typing import Dict, Any, List
 from PyQt6.QtWidgets import (
     QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, 
     QLabel, QLineEdit, QPushButton, QStackedWidget, QFrame, 
-    ComboBox, QDateEdit, QTextEdit, QCheckBox, QRadioButton,
+    QComboBox, QDateEdit, QTextEdit, QCheckBox, QRadioButton,
     QButtonGroup, QSpinBox, QGroupBox, QScrollArea, QMessageBox,
     QProgressBar, QFileDialog, 
 )
 import traceback
 from PyQt6.QtCore import Qt, QDate, QTimer, pyqtSignal
 from PyQt6.QtGui import QFont, QPixmap, QIcon
+import docx
+import subprocess
+import platform
 
 # Import custom modules
 from validation import form_validator
@@ -943,7 +946,9 @@ class MagnusClientIntakeForm(QMainWindow):
             h_layout = QHBoxLayout()
             label = QLabel(f"{asset_type} (%):")
             spin_box = QSpinBox()
-            spin_box.setObjectName(f"asset_breakdown_{asset_type.lower().replace(\' \', \'_\')}")
+            # spin_box.setObjectName(f"asset_breakdown_{asset_type.lower().replace(\' \', \'_\')}")
+            spin_box.setObjectName(f"asset_breakdown_{asset_type.lower().replace(' ', '_')}")
+
             self.asset_breakdown_fields[asset_type] = spin_box
             
             h_layout.addWidget(label)
@@ -965,13 +970,17 @@ class MagnusClientIntakeForm(QMainWindow):
             
             year_label = QLabel("Year Started:")
             year_input = QLineEdit()
-            year_input.setObjectName(f"asset_experience_{exp_type.lower().replace(\' \', \'_\')}_year")
+            # year_input.setObjectName(f"asset_experience_{exp_type.lower().replace(\' \', \'_\')}_year")
+            year_input.setObjectName(f"asset_experience_{exp_type.lower().replace(' ', '_')}_year")
+
             year_input.setPlaceholderText("YYYY")
             year_input.setMaximumWidth(80)
             
             level_label = QLabel("Level:")
             level_combo = QComboBox()
-            level_combo.setObjectName(f"asset_experience_{exp_type.lower().replace(\' \', \'_\')}_level")
+            # level_combo.setObjectName(f"asset_experience_{exp_type.lower().replace(\' \', \'_\')}_level")
+            level_combo.setObjectName(f"asset_experience_{exp_type.lower().replace(' ', '_')}_level")
+
             level_combo.addItems(["", "None", "Limited", "Good", "Extensive"])
             
             group_box_layout.addWidget(year_label)
@@ -1271,25 +1280,144 @@ class MagnusClientIntakeForm(QMainWindow):
         
         review_text = "=== MAGNUS CLIENT INTAKE FORM - REVIEW ===\n\n"
         
-        sections = [
-            ("PERSONAL INFORMATION", ["full_name", "dob", "ssn", "citizenship", "marital_status"]),
-            ("CONTACT INFORMATION", ["residential_address", "email", "home_phone", "mobile_phone", "work_phone"]),
-            ("EMPLOYMENT INFORMATION", ["employment_status", "employer_name", "occupation", "years_employed", "annual_income"]),
-            ("FINANCIAL INFORMATION", ["education_status", "tax_bracket", "risk_tolerance", "investment_objectives", "net_worth", "liquid_net_worth"]),
-            ("SPOUSE INFORMATION", ["spouse_name", "spouse_dob", "spouse_ssn", "spouse_employment"]),
-            ("DEPENDENTS", ["dependents"]),
-            ("BENEFICIARIES", ["primary_beneficiaries", "contingent_beneficiaries"]),
-        ]
-        
-        for section_name, fields in sections:
-            review_text += f"{section_name}:\n"
-            for field in fields:
-                value = self.form_data.get(field, "")
-                if value:
-                    field_label = field.replace("_", " ").title()
-                    review_text += f"  {field_label}: {value}\n"
+        # Helper to format fields
+        def format_field(label, value):
+            return f"  {label}: {value if value else '[Not provided]'}\n"
+
+        # Personal Information
+        review_text += "PERSONAL INFORMATION:\n"
+        review_text += format_field("Full Name", self.form_data.get("full_name"))
+        review_text += format_field("Date of Birth", self.form_data.get("dob"))
+        review_text += format_field("Social Security Number", self.form_data.get("ssn"))
+        review_text += format_field("Citizenship", self.form_data.get("citizenship"))
+        review_text += format_field("Marital Status", self.form_data.get("marital_status"))
+        review_text += "\n"
+
+        # Contact Information
+        review_text += "CONTACT INFORMATION:\n"
+        review_text += format_field("Residential Address", self.form_data.get("residential_address"))
+        if self.form_data.get("mailing_address_different"):
+            review_text += format_field("Mailing Address", self.form_data.get("mailing_address"))
+        review_text += format_field("Email", self.form_data.get("email"))
+        review_text += format_field("Home Phone", self.form_data.get("home_phone"))
+        review_text += format_field("Mobile Phone", self.form_data.get("mobile_phone"))
+        review_text += format_field("Work Phone", self.form_data.get("work_phone"))
+        review_text += "\n"
+
+        # Employment Information
+        review_text += "EMPLOYMENT INFORMATION:\n"
+        review_text += format_field("Employment Status", self.form_data.get("employment_status"))
+        review_text += format_field("Employer Name", self.form_data.get("employer_name"))
+        review_text += format_field("Occupation", self.form_data.get("occupation"))
+        review_text += format_field("Years Employed", self.form_data.get("years_employed"))
+        review_text += format_field("Annual Income", self.form_data.get("annual_income"))
+        review_text += format_field("Employer Address", self.form_data.get("employer_address"))
+        review_text += "\n"
+
+        # Retirement Information
+        if self.form_data.get("employment_status") == "Retired":
+            review_text += "RETIREMENT INFORMATION:\n"
+            review_text += format_field("Former Employer", self.form_data.get("former_employer"))
+            review_text += format_field("Source of Income", self.form_data.get("income_source"))
             review_text += "\n"
-        
+
+        # Financial Information
+        review_text += "FINANCIAL INFORMATION:\n"
+        review_text += format_field("Education Status", self.form_data.get("education_status"))
+        review_text += format_field("Estimated Tax Bracket", self.form_data.get("tax_bracket"))
+        review_text += format_field("Investment Risk Tolerance", self.form_data.get("risk_tolerance"))
+        review_text += format_field("Investment Objectives", self.form_data.get("investment_objectives"))
+        review_text += format_field("Net Worth (excluding primary home)", self.form_data.get("net_worth"))
+        review_text += format_field("Liquid Net Worth", self.form_data.get("liquid_net_worth"))
+        review_text += format_field("Assets Held Away", self.form_data.get("assets_held_away"))
+        review_text += "\n"
+
+        # Spouse Information
+        if self.form_data.get("spouse_applicable"):
+            review_text += "SPOUSE INFORMATION:\n"
+            review_text += format_field("Spouse Full Name", self.form_data.get("spouse_full_name"))
+            review_text += format_field("Spouse Date of Birth", self.form_data.get("spouse_dob"))
+            review_text += format_field("Spouse SSN", self.form_data.get("spouse_ssn"))
+            review_text += format_field("Spouse Employment Status", self.form_data.get("spouse_employment_status"))
+            review_text += format_field("Spouse Employer Name", self.form_data.get("spouse_employer_name"))
+            review_text += format_field("Spouse Occupation/Title", self.form_data.get("spouse_occupation"))
+            review_text += "\n"
+
+        # Dependents
+        review_text += "DEPENDENTS:\n"
+        dependents = self.form_data.get("dependents", [])
+        if dependents:
+            for i, dep in enumerate(dependents):
+                review_text += f"  Dependent {i+1}:\n"
+                review_text += format_field("    Name", dep.get("name"))
+                review_text += format_field("    Date of Birth", dep.get("dob"))
+                review_text += format_field("    Relationship", dep.get("relationship"))
+        else:
+            review_text += "  [No dependents specified]\n"
+        review_text += "\n"
+
+        # Beneficiaries
+        review_text += "BENEFICIARIES:\n"
+        beneficiaries = self.form_data.get("beneficiaries", [])
+        if beneficiaries:
+            for i, ben in enumerate(beneficiaries):
+                review_text += f"  Beneficiary {i+1}:\n"
+                review_text += format_field("    Name", ben.get("name"))
+                review_text += format_field("    Date of Birth", ben.get("dob"))
+                review_text += format_field("    Relationship", ben.get("relationship"))
+                percentage = ben.get('percentage', '')
+                review_text += format_field("    Percentage", f"{percentage}%" if percentage else "[Not provided]")
+        else:
+            review_text += "  [No beneficiaries specified]\n"
+        review_text += "\n"
+
+        # Asset Breakdown
+        if self.form_data.get("include_breakdown"):
+            review_text += "ASSET BREAKDOWN:\n"
+            asset_types = ["Stocks", "Bonds", "Mutual Funds", "ETFs", "Options", "Futures", "Short-Term", "Other"]
+            for asset_type in asset_types:
+                field_name = f"asset_breakdown_{asset_type.lower().replace(' ', '_')}"
+                value = self.form_data.get(field_name)
+                review_text += format_field(asset_type, f"{value}%" if value else None)
+            review_text += "\n"
+
+        # Investment Experience
+        review_text += "INVESTMENT EXPERIENCE:\n"
+        experience_types = ["Stocks", "Bonds", "Mutual Funds", "ETFs", "Options", "Futures"]
+        for exp_type in experience_types:
+            year_field = f"asset_experience_{exp_type.lower().replace(' ', '_')}_year"
+            level_field = f"asset_experience_{exp_type.lower().replace(' ', '_')}_level"
+            
+            year = self.form_data.get(year_field)
+            level = self.form_data.get(level_field)
+            
+            review_text += f"  {exp_type}:\n"
+            review_text += format_field("    Year Started", year)
+            review_text += format_field("    Experience Level", level)
+        review_text += "\n"
+
+        # Outside Broker Information
+        if self.form_data.get("has_outside_broker"):
+            review_text += "OUTSIDE BROKER INFORMATION:\n"
+            review_text += format_field("Broker Firm Name", self.form_data.get("outside_firm_name"))
+            review_text += format_field("Account Number", self.form_data.get("outside_liquid_amount"))
+            review_text += format_field("Account Type", self.form_data.get("outside_broker_account_type"))
+            review_text += "\n"
+
+        # Trusted Contact Information
+        review_text += "TRUSTED CONTACT INFORMATION:\n"
+        review_text += format_field("Full Name", self.form_data.get("trusted_full_name"))
+        review_text += format_field("Relationship", self.form_data.get("trusted_relationship"))
+        review_text += format_field("Phone Number", self.form_data.get("trusted_phone"))
+        review_text += format_field("Email Address", self.form_data.get("trusted_email"))
+        review_text += "\n"
+
+        # Regulatory Consent
+        review_text += "REGULATORY CONSENT:\n"
+        electronic_consent = "Yes" if self.form_data.get("electronic_regulatory_yes") else "No"
+        review_text += format_field("Electronic Delivery Consent", electronic_consent)
+        review_text += "\n"
+
         self.review_area.setPlainText(review_text)
         
     def collect_form_data(self):
@@ -1316,14 +1444,8 @@ class MagnusClientIntakeForm(QMainWindow):
                         
     def auto_save_data(self):
         """Auto-save form data"""
-        self.collect_form_data()
-        try:
-            # Save to temporary file
-            temp_file = os.path.join(tempfile.gettempdir(), "magnus_form_autosave.json")
-            with open(temp_file, 'w') as f:
-                json.dump(self.form_data, f, indent=2, default=str)
-        except Exception as e:
-            print(f"Auto-save failed: {e}")
+        # Removed auto-save functionality to prevent JSON format saving
+        pass
             
     def load_draft_data(self):
         """Load draft data if available"""
@@ -1363,58 +1485,67 @@ class MagnusClientIntakeForm(QMainWindow):
                     print(f"Failed to populate field {object_name}: {e}")
                     
     def save_draft(self):
-        """Save current form as draft"""
+        """Save current form as draft in Word format"""
         self.collect_form_data()
         
         file_path, _ = QFileDialog.getSaveFileName(
-            self, "Save Draft", "magnus_form_draft.json", "JSON Files (*.json)"
+            self, "Save Draft", "magnus_form_draft.docx", "Word Files (*.docx)"
         )
         
         if file_path:
             try:
-                with open(file_path, 'w') as f:
-                    json.dump(self.form_data, f, indent=2, default=str)
-                QMessageBox.information(self, "Success", "Draft saved successfully!")
+                doc = docx.Document()
+                doc.add_heading('Magnus Client Intake Form Draft', 0)
+                
+                for key, value in self.form_data.items():
+                    doc.add_paragraph(f"{key}: {value}")
+                
+                doc.save(file_path)
+                QMessageBox.information(self, "Success", "Draft saved successfully in Word format!")
             except Exception as e:
                 QMessageBox.critical(self, "Error", f"Failed to save draft: {e}")
                 
     def generate_pdf_report(self):
-        """Generate PDF report from form data"""
-        self.collect_form_data()
+        """Generate PDF report from form data without validation"""
+        try:
+            self.collect_form_data()
 
-        # Validate required fields
-        form_validator.clear_errors()
-        if not form_validator.validate_all_sections(self.form_data):
-            errors = form_validator.get_error_summary()
-            QMessageBox.warning(self, "Validation Errors", f"Please correct the following errors:\n\n{errors}")                     
-            return
+            # Get save location
+            file_path, _ = QFileDialog.getSaveFileName(
+                self, "Save PDF Report", "Magnus_Client_Intake_Form.pdf", "PDF Files (*.pdf)"
+            )
 
-        # Get save location
-        file_path, _ = QFileDialog.getSaveFileName(
-            self, "Save PDF Report", "Magnus_Client_Intake_Form.pdf", "PDF Files (*.pdf)"
-        )
+            if not file_path:  # User cancelled the save dialog
+                return
 
-        if file_path:
             try:
+                # Generate the PDF
                 success = generate_pdf_from_data(self.form_data, file_path)
+                
                 if success:
                     QMessageBox.information(self, "Success", f"PDF report generated successfully!\n\nSaved to: {file_path}")
-                    # Open the file
-                    import subprocess
-                    import platform
-                    if platform.system() == 'Windows':
-                        os.startfile(file_path)
-                    elif platform.system() == 'Darwin':
-                        subprocess.call(['open', file_path])
-                    else:
-                        subprocess.call(['xdg-open', file_path])
+                    # Try to open the PDF
+                    try:
+                        if platform.system() == 'Windows':
+                            os.startfile(file_path)
+                        elif platform.system() == 'Darwin':
+                            subprocess.call(['open', file_path])
+                        else:
+                            subprocess.call(['xdg-open', file_path])
+                    except Exception as e:
+                        QMessageBox.warning(self, "Warning", 
+                            f"PDF was generated but could not be opened automatically.\n\nYou can find it at: {file_path}")
                 else:
-                    raise Exception("PDF generation returned False")
+                    QMessageBox.critical(self, "Error", "Failed to generate PDF report. Please try again.")
 
             except Exception as e:
-                import traceback
                 error_details = traceback.format_exc()
-                QMessageBox.critical(self, "PDF Error", f"Failed to generate PDF:\n{e}\n\nDetails:\n{error_details}")
+                QMessageBox.critical(self, "PDF Error", 
+                    f"An error occurred while generating the PDF:\n\n{str(e)}\n\nPlease try again or contact support if the problem persists.")
+            
+        except Exception as e:
+            QMessageBox.critical(self, "Error", 
+                f"An unexpected error occurred:\n\n{str(e)}\n\nPlease try again or contact support if the problem persists.")
 
 
 
